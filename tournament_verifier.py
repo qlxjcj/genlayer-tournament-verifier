@@ -15,7 +15,7 @@ class Tournament:
     participants: str
     status: str
     winner: str
-    results: str
+    verified_result_id: str
     created_at: str
 
 
@@ -55,8 +55,17 @@ class TournamentVerifier(gl.Contract):
             return body.decode("utf-8", errors="replace")
         return str(body)
 
+    def _send(self, recipient: Address, amount: u256):
+        @gl.evm.contract_interface
+        class _Recipient:
+            class View:
+                pass
+            class Write:
+                pass
+        _Recipient(recipient).emit_transfer(value=amount)
+
     @gl.public.write.payable
-    def create_tournament(self, name: str, game: str, participants_json: str):
+    def create_tournament(self, name: str, game: str, participants_json: str) -> str:
         if not name or not name.strip():
             raise gl.vm.UserError("Tournament name is required")
         if not game or not game.strip():
@@ -86,7 +95,7 @@ class TournamentVerifier(gl.Contract):
             participants=json.dumps(participants),
             status="OPEN",
             winner="",
-            results="{}",
+            verified_result_id="",
             created_at=datetime.now(timezone.utc).isoformat(),
         )
         self.tournaments[tournament_id] = json.dumps(tournament.__dict__)
@@ -164,6 +173,12 @@ class TournamentVerifier(gl.Contract):
         if tournament["status"] != "OPEN":
             raise gl.vm.UserError("Tournament not open")
 
+        participants = json.loads(tournament["participants"])
+        if player_a not in participants:
+            raise gl.vm.UserError("Player A is not a registered participant")
+        if player_b not in participants:
+            raise gl.vm.UserError("Player B is not a registered participant")
+
         try:
             sources = json.loads(sources_json)
         except (json.JSONDecodeError, TypeError):
@@ -171,6 +186,10 @@ class TournamentVerifier(gl.Contract):
 
         if not isinstance(sources, list) or len(sources) < 2:
             raise gl.vm.UserError("At least 2 sources required for cross-validation")
+
+        urls = [s["url"] for s in sources]
+        if len(set(urls)) != len(urls):
+            raise gl.vm.UserError("Duplicate sources not allowed")
 
         for s in sources:
             if not isinstance(s, dict) or "url" not in s:
@@ -204,7 +223,7 @@ class TournamentVerifier(gl.Contract):
         return result_id
 
     @gl.public.write
-    def finalize_tournament(self, tournament_id: str, winner: str):
+    def finalize_tournament(self, tournament_id: str, result_id: str):
         tournament_id = str(tournament_id)
         tournament = json.loads(self.tournaments.get(tournament_id, "{}"))
         if not tournament:
@@ -216,8 +235,44 @@ class TournamentVerifier(gl.Contract):
         if sender.lower() != tournament["organizer"].lower():
             raise gl.vm.UserError("Only organizer can finalize")
 
+        result = json.loads(self.results.get(str(result_id), "{}"))
+        if not result:
+            raise gl.vm.UserError("Result not found")
+        if result["tournament_id"] != tournament_id:
+            raise gl.vm.UserError("Result does not belong to this tournament")
+        if result["cross_validation"] == "FAIL":
+            raise gl.vm.UserError("Cannot finalize with failed cross-validation")
+
+        participants = json.loads(tournament["participants"])
+        winner = result["winner"]
+        if winner not in participants:
+            raise gl.vm.UserError("Winner is not a registered participant")
+
+        prize_pool = u256(int(tournament["prize_pool"]))
+        self._send(Address(winner), prize_pool)
+
         tournament["status"] = "COMPLETED"
         tournament["winner"] = winner
+        tournament["verified_result_id"] = str(result_id)
+        self.tournaments[tournament_id] = json.dumps(tournament)
+
+    @gl.public.write
+    def cancel_tournament(self, tournament_id: str):
+        tournament_id = str(tournament_id)
+        tournament = json.loads(self.tournaments.get(tournament_id, "{}"))
+        if not tournament:
+            raise gl.vm.UserError("Tournament not found")
+        if tournament["status"] != "OPEN":
+            raise gl.vm.UserError("Tournament not open")
+
+        sender = gl.message.sender_address.as_hex
+        if sender.lower() != tournament["organizer"].lower():
+            raise gl.vm.UserError("Only organizer can cancel")
+
+        prize_pool = u256(int(tournament["prize_pool"]))
+        self._send(Address(tournament["organizer"]), prize_pool)
+
+        tournament["status"] = "CANCELLED"
         self.tournaments[tournament_id] = json.dumps(tournament)
 
     @gl.public.view

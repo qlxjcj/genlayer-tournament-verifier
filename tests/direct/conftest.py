@@ -24,14 +24,14 @@ LLM_RESPONSE_VALID = json.dumps({
     "reasoning": "Both sources agree on the score."
 })
 
-LLM_RESPONSE_DISAGREE = json.dumps({
+LLM_RESPONSE_FAIL = json.dumps({
     "score_a": "3",
     "score_b": "1",
     "winner": "UNKNOWN",
     "cross_validation": "FAIL",
     "source_agreement": "30",
-    "evidence": {"https://source-a.com": "PlayerA 3-1 PlayerB", "https://source-b.com": "PlayerB 2-1 PlayerA"},
-    "reasoning": "Sources contradict each other."
+    "evidence": {},
+    "reasoning": "Sources contradict."
 })
 
 
