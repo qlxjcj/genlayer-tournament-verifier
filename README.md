@@ -4,7 +4,7 @@ A GenLayer intelligent contract that verifies esports match results from indepen
 sources using AI consensus, then settles the prize pool to the winner's **registered
 blockchain address**.
 
-Bradbury testnet contract: `0xPLACEHOLDER`
+Bradbury testnet contract: `0xA66821E33Eb3cd576E5368b3AC49c8c4Efd549D4`
 Live frontend: see GitHub Pages link in the submission
 
 ---
