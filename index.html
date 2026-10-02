@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tournament Verifier &amp; Settlement — GenLayer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e0e0e0; }
+.container { max-width: 960px; margin: 0 auto; padding: 20px; }
+.header { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid #1a1a2e; margin-bottom: 24px; }
+.header h1 { font-size: 1.4em; color: #a78bfa; }
+.btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all .2s; }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+.btn-primary { background: #7c3aed; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #6d28d9; }
+.btn-danger { background: #dc2626; color: #fff; }
+.btn-outline { background: transparent; border: 1px solid #7c3aed; color: #a78bfa; }
+.btn-sm { padding: 6px 14px; font-size: 12px; }
+.card { background: #12121a; border: 1px solid #1a1a2e; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.card h2 { font-size: 1.05em; margin-bottom: 4px; color: #c4b5fd; }
+.card .sub { font-size: 11px; color: #666; margin-bottom: 14px; }
+label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; }
+input, select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #1a1a2e; background: #0a0a0f; color: #e0e0e0; font-size: 13px; }
+input:focus, select:focus { outline: none; border-color: #7c3aed; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.field { margin-bottom: 12px; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat { background: #12121a; border: 1px solid #1a1a2e; border-radius: 10px; padding: 14px; text-align: center; }
+.stat .num { font-size: 1.5em; font-weight: 700; color: #a78bfa; }
+.stat .label { font-size: 10px; color: #666; margin-top: 4px; }
+.prow { display: grid; grid-template-columns: 1fr 2fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+.badge { padding: 3px 9px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+.badge-OPEN { background: #16a34a20; color: #16a34a; }
+.badge-COMPLETED { background: #7c3aed20; color: #a78bfa; }
+.badge-CANCELLED { background: #dc262620; color: #f87171; }
+.badge-PASS { background: #16a34a20; color: #16a34a; }
+.badge-FAIL { background: #dc262620; color: #f87171; }
+.badge-PARTIAL { background: #f59e0b20; color: #f59e0b; }
+.kv { font-size: 12px; color: #aaa; margin: 3px 0; word-break: break-all; }
+.kv b { color: #e0e0e0; }
+.verified { background: #16a34a15; border: 1px solid #16a34a40; border-radius: 8px; padding: 10px; margin-top: 12px; font-size: 12px; color: #86efac; }
+.warn { background: #dc262615; border: 1px solid #dc262640; border-radius: 8px; padding: 10px; margin-top: 12px; font-size: 12px; color: #fca5a5; }
+.spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid #ffffff40; border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; margin-right: 6px; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 22px; border-radius: 8px; font-size: 13px; z-index: 999; max-width: 380px; }
+.toast-success { background: #16a34a; color: #fff; }
+.toast-error { background: #dc2626; color: #fff; }
+.addr { font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+@media (max-width: 760px) { .grid2, .grid3 { grid-template-columns: 1fr; } .stats-grid { grid-template-columns: 1fr 1fr; } .prow { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div>
+      <h1>Tournament Verifier</h1>
+      <div style="font-size:11px;color:#666;margin-top:4px;">Consensus-verified results &middot; prize settlement to real participant addresses</div>
+    </div>
+    <button class="btn btn-outline btn-sm" id="connectBtn">Connect Wallet</button>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat"><div class="num" id="statT">-</div><div class="label">Tournaments</div></div>
+    <div class="stat"><div class="num" id="statR">-</div><div class="label">Verified Results</div></div>
+    <div class="stat"><div class="num" id="statC">-</div><div class="label">Cross-Validated</div></div>
+    <div class="stat"><div class="num" id="statBal">-</div><div class="label">Prize Escrow (GEN)</div></div>
+  </div>
+
+  <div class="card">
+    <h2>1 &middot; Create Tournament</h2>
+    <div class="sub">Prize pool is escrowed in the contract. Each participant needs a real payout address (0x + 40 hex).</div>
+    <div class="grid2">
+      <div class="field"><label>Tournament name</label><input id="tName" placeholder="World Cup 2026"></div>
+      <div class="field"><label>Game</label><input id="tGame" placeholder="CS2"></div>
+    </div>
+    <div class="field">
+      <label>Prize pool (GEN)</label>
+      <input id="tPrize" type="number" min="0" step="0.001" value="1">
+    </div>
+    <div class="field">
+      <label>Participants &mdash; display name + blockchain payout address</label>
+      <div id="participants"></div>
+      <button class="btn btn-outline btn-sm" id="addP" type="button">+ Add participant</button>
+    </div>
+    <button class="btn btn-primary" id="createBtn">Create &amp; fund tournament</button>
+    <div id="createResult"></div>
+  </div>
+
+  <div class="card">
+    <h2>2 &middot; Submit Match Result</h2>
+    <div class="sub">Two distinct source URLs are required. Sources are cross-validated; empty, malformed or error responses fail closed.</div>
+    <div class="grid3">
+      <div class="field"><label>Tournament ID</label><input id="mTid" placeholder="1"></div>
+      <div class="field"><label>Match ID</label><input id="mMatch" placeholder="final"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Player A (registered display name)</label><input id="mA" placeholder="Alice"></div>
+      <div class="field"><label>Player B (registered display name)</label><input id="mB" placeholder="Bob"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Source URL 1</label><input id="mS1" placeholder="https://esports.example.com/final"></div>
+      <div class="field"><label>Source URL 2</label><input id="mS2" placeholder="https://scores.example.com/final"></div>
+    </div>
+    <button class="btn btn-primary" id="submitBtn">Verify match result</button>
+    <div id="submitResult"></div>
+  </div>
+
+  <div class="card">
+    <h2>3 &middot; Settle / Refund</h2>
+    <div class="sub">Settlement consumes a verified result and pays the winner's registered address. Cancel refunds the organizer.</div>
+    <div class="grid2">
+      <div class="field"><label>Tournament ID</label><input id="sTid" placeholder="1"></div>
+      <div class="field"><label>Verified result ID to settle</label><input id="sRid" placeholder="1"></div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="finalizeBtn">Settle prize</button>
+      <button class="btn btn-danger" id="cancelBtn">Cancel &amp; refund</button>
+    </div>
+    <div id="settleResult"></div>
+  </div>
+
+  <div class="card">
+    <h2>4 &middot; Inspect on-chain record</h2>
+    <div class="sub">Records are bound to their own IDs &mdash; never to a shared &quot;latest&quot; pointer.</div>
+    <div class="grid2">
+      <div class="field"><label>Tournament ID</label><input id="lTid" placeholder="1"></div>
+      <div class="field"><label>Result ID</label><input id="lRid" placeholder="1"></div>
+    </div>
+    <button class="btn btn-outline" id="lookupBtn">Load records</button>
+    <div id="lookupResult"></div>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/genlayer-js@1.2.0/+esm';
+
+let CONTRACT = '0xPLACEHOLDER';
+
+const chainConfig = {
+  id: 2365, name: 'Bradbury',
+  rpcUrls: { default: { http: ['https://rpc-bradbury.genlayer.com'] } },
+  nativeCurrency: { name: 'GEN', symbol: 'GEN', decimals: 18 }
+};
+
+const readClient = createClient({ chain: chainConfig });
+let writeClient = null;
+let account = null;
+
+const $ = (id) => document.getElementById(id);
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = String(str ?? '');
+  return d.innerHTML;
+}
+
+function isAddress(a) {
+  return typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a);
+}
+
+function toast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 6000);
+}
+
+function setBusy(btn, busy, label) {
+  btn.disabled = busy;
+  if (busy) {
+    btn._orig = btn.textContent;
+    btn.textContent = '';
+    const s = document.createElement('span');
+    s.className = 'spinner';
+    btn.appendChild(s);
+    btn.appendChild(document.createTextNode(label));
+  } else if (btn._orig) {
+    btn.textContent = btn._orig;
+  }
+}
+
+function note(container, ok, lines) {
+  container.textContent = '';
+  const box = document.createElement('div');
+  box.className = ok ? 'verified' : 'warn';
+  for (const line of lines) {
+    const p = document.createElement('div');
+    p.style.margin = '2px 0';
+    if (Array.isArray(line)) {
+      const b = document.createElement('b');
+      b.textContent = line[0] + ': ';
+      box.appendChild(b);
+      box.appendChild(document.createTextNode(String(line[1])));
+      box.appendChild(document.createElement('br'));
+    } else {
+      p.textContent = line;
+      box.appendChild(p);
+    }
+  }
+  container.appendChild(box);
+}
+
+async function connectWallet() {
+  if (!window.ethereum) throw new Error('Install MetaMask first');
+  await window.ethereum.request({ method: 'eth_requestAccounts' });
+  const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+  account = accounts[0];
+  writeClient = createClient({ chain: chainConfig, account, provider: window.ethereum });
+  await writeClient.connect('testnetBradbury');
+  return account;
+}
+
+$('connectBtn').onclick = async () => {
+  const btn = $('connectBtn');
+  try {
+    setBusy(btn, true, ' Connecting...');
+    const addr = await connectWallet();
+    btn.textContent = addr.slice(0, 6) + '...' + addr.slice(-4);
+    btn.className = 'btn btn-primary btn-sm';
+    toast('Wallet connected', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    if (!account) setBusy(btn, false);
+  }
+};
+
+async function read(method, args) {
+  return await readClient.readContract({ address: CONTRACT, functionName: method, args });
+}
+
+async function write(method, args, value = 0n) {
+  if (!writeClient) await connectWallet();
+  const hash = await writeClient.writeContract({ address: CONTRACT, functionName: method, args, value });
+  const receipt = await writeClient.waitForTransactionReceipt({ hash, status: 'ACCEPTED' });
+  return receipt;
+}
+
+function receiptId(receipt) {
+  const cands = [receipt?.result, receipt?.returnValue, receipt?.output, receipt?.returnData];
+  for (const c of cands) {
+    if (typeof c === 'string' && c.trim()) return c.trim();
+    if (typeof c === 'number') return String(c);
+  }
+  return null;
+}
+
+async function loadStats() {
+  try {
+    const t = await read('get_tournament_count', []);
+    const r = await read('get_result_count', []);
+    const s = await read('get_stats', []);
+    $('statT').textContent = t.toString();
+    $('statR').textContent = r.toString();
+    $('statC').textContent = String(s.cross_validated ?? 0);
+    $('statBal').textContent = 'live';
+  } catch (e) { console.log(e); }
+}
+
+/* ---- participant rows ---- */
+function addParticipantRow(name = '', addr = '') {
+  const wrap = $('participants');
+  const row = document.createElement('div');
+  row.className = 'prow';
+
+  const n = document.createElement('input');
+  n.placeholder = 'Display name';
+  n.value = name;
+
+  const a = document.createElement('input');
+  a.placeholder = '0x... payout address';
+  a.className = 'addr';
+  a.value = addr;
+
+  const rm = document.createElement('button');
+  rm.className = 'btn btn-danger btn-sm';
+  rm.type = 'button';
+  rm.textContent = 'x';
+  rm.onclick = () => {
+    if (wrap.querySelectorAll('.prow').length > 2) row.remove();
+    else toast('At least 2 participants are required', 'error');
+  };
+
+  row.appendChild(n);
+  row.appendChild(a);
+  row.appendChild(rm);
+  wrap.appendChild(row);
+}
+
+$('addP').onclick = () => addParticipantRow();
+addParticipantRow('Alice', '');
+addParticipantRow('Bob', '');
+
+function collectParticipants() {
+  const rows = [...$('participants').querySelectorAll('.prow')];
+  const out = [];
+  for (const r of rows) {
+    const [n, a] = r.querySelectorAll('input');
+    out.push({ name: n.value.trim(), address: a.value.trim() });
+  }
+  return out;
+}
+
+/* ---- 1. create ---- */
+$('createBtn').onclick = async () => {
+  const name = $('tName').value.trim();
+  const game = $('tGame').value.trim();
+  const prize = $('tPrize').value;
+  const parts = collectParticipants();
+
+  if (!name || !game) return toast('Name and game are required', 'error');
+  if (parts.length < 2) return toast('At least 2 participants', 'error');
+  for (const p of parts) {
+    if (!p.name) return toast('Every participant needs a display name', 'error');
+    if (!isAddress(p.address)) return toast('Invalid payout address for ' + p.name + ' (need 0x + 40 hex)', 'error');
+  }
+  const seenN = new Set(parts.map(p => p.name));
+  const seenA = new Set(parts.map(p => p.address.toLowerCase()));
+  if (seenN.size !== parts.length) return toast('Duplicate participant name', 'error');
+  if (seenA.size !== parts.length) return toast('Duplicate payout address', 'error');
+
+  const btn = $('createBtn');
+  const out = $('createResult');
+  out.textContent = '';
+  setBusy(btn, true, ' Creating...');
+  try {
+    const wei = BigInt(Math.round(parseFloat(prize || '0') * 1e18));
+    const receipt = await write('create_tournament', [name, game, JSON.stringify(parts)], wei);
+    const id = receiptId(receipt);
+
+    // Bind the display to the exact entity created by THIS request.
+    const tid = id ?? String(await read('get_tournament_count', []));
+    const t = JSON.parse(await read('get_tournament', [tid]));
+    const stored = JSON.parse(t.participants || '[]');
+
+    const match =
+      t.name === name &&
+      t.game === game &&
+      stored.length === parts.length &&
+      parts.every((p, i) => stored[i].name === p.name && stored[i].address.toLowerCase() === p.address.toLowerCase());
+
+    if (!match) {
+      note(out, false, ['Result binding check FAILED: the record returned does not match what was submitted.']);
+      return;
+    }
+
+    note(out, true, [
+      ['Tournament ID', tid],
+      ['Status', t.status],
+      ['Prize escrowed', prize + ' GEN'],
+      ['Organizer', t.organizer],
+      '',
+      'Payout registry (name -> address):',
+      ...stored.map(p => '  ' + p.name + ' -> ' + p.address),
+      '',
+      'Binding verified: record fields match the submitted request exactly.'
+    ]);
+    loadStats();
+  } catch (e) {
+    note(out, false, [e.message]);
+  } finally {
+    setBusy(btn, false);
+  }
+};
+
+/* ---- 2. submit match ---- */
+$('submitBtn').onclick = async () => {
+  const tid = $('mTid').value.trim();
+  const match = $('mMatch').value.trim();
+  const a = $('mA').value.trim();
+  const b = $('mB').value.trim();
+  const s1 = $('mS1').value.trim();
+  const s2 = $('mS2').value.trim();
+
+  if (!tid || !match || !a || !b) return toast('Tournament, match and both players are required', 'error');
+  if (a === b) return toast('Players must differ', 'error');
+  if (!s1 || !s2) return toast('Two distinct source URLs are required', 'error');
+  if (s1 === s2) return toast('Duplicate sources are not allowed', 'error');
+  if (!/^https?:\/\//.test(s1) || !/^https?:\/\//.test(s2)) return toast('Sources must be http(s) URLs', 'error');
+
+  const btn = $('submitBtn');
+  const out = $('submitResult');
+  out.textContent = '';
+  setBusy(btn, true, ' Verifying...');
+  try {
+    const sources = [{ url: s1 }, { url: s2 }];
+    const receipt = await write('submit_match_result', [tid, match, a, b, JSON.stringify(sources)]);
+    const rid = receiptId(receipt) ?? String(await read('get_result_count', []));
+    const r = JSON.parse(await read('get_result', [rid]));
+
+    const bound = r.tournament_id === tid && r.match_id === match && r.player_a === a && r.player_b === b;
+    if (!bound) {
+      note(out, false, ['Result binding check FAILED: the record returned is not for this request.']);
+      return;
+    }
+
+    const ok = r.cross_validation !== 'FAIL';
+    note(out, ok, [
+      ['Result ID', rid],
+      ['Winner', r.winner],
+      ['Score', r.score_a + ' - ' + r.score_b],
+      ['Cross-validation', r.cross_validation],
+      ['Source agreement', r.source_agreement + '%'],
+      ['Sources passed schema', r.sources_agreed + ' of ' + r.sources_checked],
+      ['Reasoning', r.reasoning],
+      '',
+      'Binding verified: this record is for tournament ' + r.tournament_id + ' / match ' + r.match_id + '.'
+    ]);
+    loadStats();
+  } catch (e) {
+    note(out, false, [e.message]);
+  } finally {
+    setBusy(btn, false);
+  }
+};
+
+/* ---- 3. settle / refund ---- */
+$('finalizeBtn').onclick = async () => {
+  const tid = $('sTid').value.trim();
+  const rid = $('sRid').value.trim();
+  if (!tid || !rid) return toast('Tournament ID and result ID are required', 'error');
+
+  const btn = $('finalizeBtn');
+  const out = $('settleResult');
+  out.textContent = '';
+  setBusy(btn, true, ' Settling...');
+  try {
+    const before = JSON.parse(await read('get_tournament', [tid]));
+    await write('finalize_tournament', [tid, rid]);
+    const after = JSON.parse(await read('get_tournament', [tid]));
+
+    const registry = JSON.parse(after.name_to_addr || '{}');
+    const payoutAddr = registry[after.winner_name] || '';
+
+    const bound =
+      after.status === 'COMPLETED' &&
+      String(after.verified_result_id) === String(rid) &&
+      payoutAddr.toLowerCase() === String(after.winner_address).toLowerCase();
+
+    note(out, bound, [
+      ['Status', after.status],
+      ['Consumed result ID', after.verified_result_id],
+      ['Winner (name)', after.winner_name],
+      ['Paid to (address)', after.winner_address],
+      ['Prize', before.prize_pool + ' wei'],
+      '',
+      bound
+        ? 'Binding verified: settlement consumed result ' + rid + ' and paid the registry address for ' + after.winner_name + '.'
+        : 'Binding check FAILED.'
+    ]);
+    loadStats();
+  } catch (e) {
+    note(out, false, [e.message]);
+  } finally {
+    setBusy(btn, false);
+  }
+};
+
+$('cancelBtn').onclick = async () => {
+  const tid = $('sTid').value.trim();
+  if (!tid) return toast('Tournament ID required', 'error');
+  const btn = $('cancelBtn');
+  const out = $('settleResult');
+  out.textContent = '';
+  setBusy(btn, true, ' Refunding...');
+  try {
+    await write('cancel_tournament', [tid]);
+    const t = JSON.parse(await read('get_tournament', [tid]));
+    note(out, t.status === 'CANCELLED', [
+      ['Status', t.status],
+      ['Refunded to', t.organizer],
+      ['Amount', t.prize_pool + ' wei'],
+      '',
+      'Prize pool returned to the organizer.'
+    ]);
+    loadStats();
+  } catch (e) {
+    note(out, false, [e.message]);
+  } finally {
+    setBusy(btn, false);
+  }
+};
+
+/* ---- 4. inspect ---- */
+$('lookupBtn').onclick = async () => {
+  const tid = $('lTid').value.trim();
+  const rid = $('lRid').value.trim();
+  const out = $('lookupResult');
+  out.textContent = '';
+  const lines = [];
+  try {
+    if (tid) {
+      const t = JSON.parse(await read('get_tournament', [tid]));
+      if (!t.tournament_id) { lines.push('Tournament ' + tid + ' not found'); }
+      else {
+        const parts = JSON.parse(t.participants || '[]');
+        lines.push('--- Tournament ' + t.tournament_id + ' ---');
+        lines.push(['Name', t.name]);
+        lines.push(['Game', t.game]);
+        lines.push(['Status', t.status]);
+        lines.push(['Organizer', t.organizer]);
+        lines.push(['Prize (wei)', t.prize_pool]);
+        lines.push(['Consumed result', t.verified_result_id || '(none)']);
+        lines.push(['Winner', t.winner_name || '(none)']);
+        lines.push(['Paid to', t.winner_address || '(none)']);
+        lines.push('');
+        lines.push('Payout registry:');
+        for (const p of parts) lines.push('  ' + p.name + ' -> ' + p.address);
+      }
+    }
+    if (rid) {
+      const r = JSON.parse(await read('get_result', [rid]));
+      if (!r.result_id) { lines.push('Result ' + rid + ' not found'); }
+      else {
+        lines.push('--- Result ' + r.result_id + ' ---');
+        lines.push(['Tournament', r.tournament_id]);
+        lines.push(['Match', r.match_id]);
+        lines.push(['Players', r.player_a + ' vs ' + r.player_b]);
+        lines.push(['Score', r.score_a + ' - ' + r.score_b]);
+        lines.push(['Winner', r.winner]);
+        lines.push(['Cross-validation', r.cross_validation]);
+        lines.push(['Source agreement', r.source_agreement + '%']);
+        lines.push(['Sources passed', r.sources_agreed + ' of ' + r.sources_checked]);
+        lines.push(['Verified at', r.verified_at]);
+      }
+    }
+    if (!tid && !rid) return toast('Enter a tournament ID or result ID', 'error');
+    note(out, true, lines);
+  } catch (e) {
+    note(out, false, [e.message]);
+  }
+};
+
+loadStats();
+</script>
+</body>
+</html>
