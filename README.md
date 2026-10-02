@@ -4,8 +4,8 @@ A GenLayer intelligent contract that verifies esports match results from indepen
 sources using AI consensus, then settles the prize pool to the winner's **registered
 blockchain address**.
 
-Bradbury testnet contract: `0xA66821E33Eb3cd576E5368b3AC49c8c4Efd549D4`
-Live frontend: see GitHub Pages link in the submission
+Bradbury testnet contract: `0x3abde80377C82C89F302C67F3C21035dCa376CD9`
+Live frontend: https://qlxjcj.github.io/genlayer-tournament-verifier/
 
 ---
 
@@ -81,7 +81,7 @@ the recovery path for funds when no valid result is ever produced.
 python -m pytest tests/direct -q
 ```
 
-29 direct-mode tests. Direct mode does not track native value flow on its own, so
+31 direct-mode tests. Direct mode does not track native value flow on its own, so
 `tests/direct/conftest.py` installs two accounting hooks (mirroring what the chain does):
 
 1. a payable hook that moves `vm.value` sender → contract on `create_tournament`
@@ -115,14 +115,44 @@ its fields match what was submitted** before rendering it. It never reads a shar
 `get_latest` pointer. DOM APIs only (no `innerHTML` for dynamic content), with loading
 states and address-format validation.
 
+## Live on-chain verification
+
+Run against the deployed contract on Bradbury. Each case is the exact failure mode
+raised in review, exercised against the real chain rather than mocks:
+
+| # | Call | Input | Result |
+|---|---|---|---|
+| 1 | `create_tournament` | `["PlayerA","PlayerB"]` | `FINISHED_WITH_ERROR` — arbitrary strings rejected |
+| 2 | `create_tournament` | address `0xNOTANADDR` | `FINISHED_WITH_ERROR` — malformed address rejected |
+| 3 | `create_tournament` | two participants, same address | `FINISHED_WITH_ERROR` — duplicate payout rejected |
+| 4 | `create_tournament` | two real `0x…` addresses | `FINISHED_WITH_RETURN` — accepted |
+| 5 | `get_payout_address(1,"Alice")` | — | `0x1111…1111`, `0x2222…2222` for Bob, `''` for anyone else |
+| 6 | `submit_match_result` | player `Mallory` (unregistered) | `FINISHED_WITH_ERROR` |
+| 7 | `submit_match_result` | two identical source URLs | `FINISHED_WITH_ERROR` |
+| 8 | `submit_match_result` | two real, reachable URLs that do not cover the match | `sources_checked: 2, sources_agreed: 0, cross_validation: FAIL` — fail-closed on real HTTP |
+| 9 | `finalize_tournament` | the `FAIL` result | `FINISHED_WITH_ERROR` — failed verification cannot settle |
+| 10 | `cancel_tournament` | — | `FINISHED_WITH_RETURN`, status `CANCELLED` — refund path open |
+
+Case 8 is the important one: the sources were genuinely fetched over the network and
+genuinely said nothing about the match, so both were discarded rather than counted as
+retrieved.
+
+Funded settlement (a non-zero prize moving to a participant EOA) is exercised in the
+test suite with asserted balance deltas, and can be run live from the frontend by
+connecting a wallet and funding a tournament — `genlayer write` cannot attach
+`msg.value`, so the CLI cannot fund the escrow itself.
+
 ## Contract surface
 
 | Method | Kind | Purpose |
 |---|---|---|
-| `create_tournament(name, game, participants_json)` | write, payable | register participants + escrow prize |
-| `submit_match_result(tournament_id, match_id, player_a, player_b, sources_json)` | write | consensus-verify a match |
+| `create_tournament(name, game, participants)` | write, payable | `participants` is `[{name, address}, …]`; escrows the prize |
+| `submit_match_result(tournament_id, match_id, player_a, player_b, sources)` | write | `sources` is `[{url}, …]`; consensus-verifies the match |
 | `finalize_tournament(tournament_id, result_id)` | write | settle prize to the winner's registry address |
 | `cancel_tournament(tournament_id)` | write | refund the organizer |
 | `get_tournament(id)` / `get_result(id)` | view | bound record lookup by ID |
 | `get_participants(id)` / `get_payout_address(id, name)` | view | transparent payout registry |
 | `get_tournament_count()` / `get_result_count()` / `get_stats()` | view | counters |
+
+Both `participants` and `sources` are typed structured arguments (what `genlayer-js`
+and the Studio send). A JSON-encoded string of the same payload is also accepted.

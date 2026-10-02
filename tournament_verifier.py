@@ -71,6 +71,8 @@ class TournamentVerifier(gl.Contract):
         h = getattr(a, "as_hex", None)
         if isinstance(h, str):
             return h
+        if isinstance(a, (bytes, bytearray)):
+            return "0x" + bytes(a).hex()
         return str(a)
 
     def _sender_hex(self) -> str:
@@ -88,11 +90,12 @@ class TournamentVerifier(gl.Contract):
             return False
         return True
 
-    def _parse_participants(self, participants_json: str) -> tuple:
-        try:
-            participants = json.loads(participants_json)
-        except (json.JSONDecodeError, TypeError):
-            raise gl.vm.UserError("Invalid participants JSON")
+    def _parse_participants(self, participants) -> tuple:
+        if isinstance(participants, str):
+            try:
+                participants = json.loads(participants)
+            except (json.JSONDecodeError, TypeError):
+                raise gl.vm.UserError("Invalid participants")
         if not isinstance(participants, list) or len(participants) < 2:
             raise gl.vm.UserError("At least 2 participants required")
 
@@ -103,7 +106,7 @@ class TournamentVerifier(gl.Contract):
             if not isinstance(p, dict):
                 raise gl.vm.UserError("Each participant must be an object with name and address")
             name = p.get("name", "")
-            addr = p.get("address", "")
+            addr = self._addr_to_hex(p.get("address", ""))
             if not isinstance(name, str) or not name.strip():
                 raise gl.vm.UserError("Each participant needs a non-empty name")
             name = name.strip()
@@ -152,13 +155,13 @@ class TournamentVerifier(gl.Contract):
         return True
 
     @gl.public.write.payable
-    def create_tournament(self, name: str, game: str, participants_json: str) -> str:
+    def create_tournament(self, name: str, game: str, participants: list) -> str:
         if not name or not name.strip():
             raise gl.vm.UserError("Tournament name is required")
         if not game or not game.strip():
             raise gl.vm.UserError("Game is required")
 
-        participants, name_to_addr = self._parse_participants(participants_json)
+        participants, name_to_addr = self._parse_participants(participants)
 
         organizer_hex = self._sender_hex()
         prize_pool = gl.message.value
@@ -253,7 +256,7 @@ class TournamentVerifier(gl.Contract):
         return gl.eq_principle.prompt_comparative(gather_and_verify, principle)
 
     @gl.public.write
-    def submit_match_result(self, tournament_id: str, match_id: str, player_a: str, player_b: str, sources_json: str) -> str:
+    def submit_match_result(self, tournament_id: str, match_id: str, player_a: str, player_b: str, sources: list) -> str:
         tournament_id = str(tournament_id)
         tournament = json.loads(self.tournaments.get(tournament_id, "{}"))
         if not tournament:
@@ -276,10 +279,11 @@ class TournamentVerifier(gl.Contract):
         if player_b not in name_to_addr:
             raise gl.vm.UserError("Player B is not a registered participant")
 
-        try:
-            sources = json.loads(sources_json)
-        except (json.JSONDecodeError, TypeError):
-            raise gl.vm.UserError("Invalid sources JSON")
+        if isinstance(sources, str):
+            try:
+                sources = json.loads(sources)
+            except (json.JSONDecodeError, TypeError):
+                raise gl.vm.UserError("Invalid sources")
 
         if not isinstance(sources, list) or len(sources) < 2:
             raise gl.vm.UserError("At least 2 sources required for cross-validation")

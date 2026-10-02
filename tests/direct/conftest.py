@@ -34,10 +34,13 @@ BOB_NAME = "Bob"
 
 PRIZE_POOL = 10**18
 
-PARTICIPANTS = json.dumps([
+# Typed structured args (what the frontend and CLI actually send).
+PARTICIPANTS = [
     {"name": ALICE_NAME, "address": ALICE_ADDR},
     {"name": BOB_NAME, "address": BOB_ADDR},
-])
+]
+# The contract also accepts JSON-encoded strings for the same payload.
+PARTICIPANTS_JSON = json.dumps(PARTICIPANTS)
 
 LLM_PATTERN = r".*tournament result verifier.*|.*score_a.*"
 
@@ -89,15 +92,16 @@ SOURCE_MALFORMED = {"method": "GET", "status": 200, "body": "<html>unrelated pag
 SOURCE_ERROR = {"method": "GET", "status": 500, "body": "Internal Server Error"}
 SOURCE_BAD_JSON = {"method": "GET", "status": 200, "body": "{not json"}
 
-SOURCES_OK = json.dumps([
+SOURCES_OK = [
     {"url": "https://esports.example.com/final"},
     {"url": "https://scores.example.com/final"},
-])
+]
+SOURCES_OK_JSON = json.dumps(SOURCES_OK)
 
-SOURCES_DUP = json.dumps([
+SOURCES_DUP = [
     {"url": "https://esports.example.com/final"},
     {"url": "https://esports.example.com/final"},
-])
+]
 
 
 def balance(vm, addr):

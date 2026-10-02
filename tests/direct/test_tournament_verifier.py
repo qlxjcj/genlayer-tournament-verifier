@@ -24,12 +24,14 @@ from conftest import (
     LLM_RESPONSE_UNREGISTERED_WINNER,
     ORGANIZER_ADDR,
     PARTICIPANTS,
+    PARTICIPANTS_JSON,
     PRIZE_POOL,
     SOURCE_EMPTY,
     SOURCE_ERROR,
     SOURCE_MALFORMED,
     SOURCES_DUP,
     SOURCES_OK,
+    SOURCES_OK_JSON,
     STRANGER_ADDR,
     balance,
     contract_balance,
@@ -49,47 +51,56 @@ def test_rejects_arbitrary_string_participants(tournament):
     vm.sender = ORGANIZER_ADDR
     vm.value = 0
     with pytest.raises(Exception):
-        c.create_tournament("Cup", "CS2", json.dumps(["PlayerA", "PlayerB"]))
+        c.create_tournament("Cup", "CS2", ["PlayerA", "PlayerB"])
 
 
 def test_rejects_participant_without_valid_address(tournament):
     vm, c = tournament
-    bad = json.dumps([
+    bad = [
         {"name": "Alice", "address": "0xNOTANADDRESS"},
         {"name": "Bob", "address": BOB_ADDR},
-    ])
+    ]
     with pytest.raises(Exception):
         c.create_tournament("Cup", "CS2", bad)
 
 
 def test_rejects_participant_with_short_address(tournament):
     vm, c = tournament
-    bad = json.dumps([
+    bad = [
         {"name": "Alice", "address": "0x1234"},
         {"name": "Bob", "address": BOB_ADDR},
-    ])
+    ]
     with pytest.raises(Exception):
         c.create_tournament("Cup", "CS2", bad)
 
 
 def test_rejects_duplicate_payout_address(tournament):
     vm, c = tournament
-    dup = json.dumps([
+    dup = [
         {"name": "Alice", "address": ALICE_ADDR},
         {"name": "Bob", "address": ALICE_ADDR},
-    ])
+    ]
     with pytest.raises(Exception):
         c.create_tournament("Cup", "CS2", dup)
 
 
 def test_rejects_duplicate_participant_name(tournament):
     vm, c = tournament
-    dup = json.dumps([
+    dup = [
         {"name": "Alice", "address": ALICE_ADDR},
         {"name": "Alice", "address": BOB_ADDR},
-    ])
+    ]
     with pytest.raises(Exception):
         c.create_tournament("Cup", "CS2", dup)
+
+
+def test_accepts_json_encoded_participants(tournament):
+    """The same payload is accepted as a JSON string (Studio / legacy callers)."""
+    vm, c = tournament
+    vm.sender = ORGANIZER_ADDR
+    vm.value = PRIZE_POOL
+    tid = c.create_tournament("World Cup", "CS2", PARTICIPANTS_JSON)
+    assert c.get_payout_address(tid, ALICE_NAME) == ALICE_ADDR
 
 
 def test_creates_tournament_with_real_addresses(tournament):
@@ -303,7 +314,7 @@ def test_rejects_duplicate_sources(tournament):
 def test_requires_at_least_two_sources(tournament):
     vm, c = tournament
     tid = make_tournament(vm, c)
-    one = json.dumps([{"url": "https://esports.example.com/final"}])
+    one = [{"url": "https://esports.example.com/final"}]
     with pytest.raises(Exception):
         c.submit_match_result(tid, "final", ALICE_NAME, BOB_NAME, one)
 
@@ -311,9 +322,16 @@ def test_requires_at_least_two_sources(tournament):
 def test_rejects_invalid_source_url(tournament):
     vm, c = tournament
     tid = make_tournament(vm, c)
-    bad = json.dumps([{"url": "ftp://x"}, {"url": "https://y.example.com"}])
+    bad = [{"url": "ftp://x"}, {"url": "https://y.example.com"}]
     with pytest.raises(Exception):
         c.submit_match_result(tid, "final", ALICE_NAME, BOB_NAME, bad)
+
+
+def test_accepts_json_encoded_sources(tournament):
+    vm, c = tournament
+    tid = make_tournament(vm, c)
+    rid = c.submit_match_result(tid, "final", ALICE_NAME, BOB_NAME, SOURCES_OK_JSON)
+    assert json.loads(c.get_result(rid))["result_id"] == rid
 
 
 # ---------------------------------------------------------------------------

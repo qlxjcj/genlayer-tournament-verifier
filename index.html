@@ -136,7 +136,7 @@ input:focus, select:focus { outline: none; border-color: #7c3aed; }
 <script type="module">
 import { createClient } from 'https://cdn.jsdelivr.net/npm/genlayer-js@1.2.0/+esm';
 
-let CONTRACT = '0xA66821E33Eb3cd576E5368b3AC49c8c4Efd549D4';
+let CONTRACT = '0x3abde80377C82C89F302C67F3C21035dCa376CD9';
 
 const chainConfig = {
   id: 2365, name: 'Bradbury',
@@ -328,7 +328,7 @@ $('createBtn').onclick = async () => {
   setBusy(btn, true, ' Creating...');
   try {
     const wei = BigInt(Math.round(parseFloat(prize || '0') * 1e18));
-    const receipt = await write('create_tournament', [name, game, JSON.stringify(parts)], wei);
+    const receipt = await write('create_tournament', [name, game, parts], wei);
     const id = receiptId(receipt);
 
     // Bind the display to the exact entity created by THIS request.
@@ -387,7 +387,7 @@ $('submitBtn').onclick = async () => {
   setBusy(btn, true, ' Verifying...');
   try {
     const sources = [{ url: s1 }, { url: s2 }];
-    const receipt = await write('submit_match_result', [tid, match, a, b, JSON.stringify(sources)]);
+    const receipt = await write('submit_match_result', [tid, match, a, b, sources]);
     const rid = receiptId(receipt) ?? String(await read('get_result_count', []));
     const r = JSON.parse(await read('get_result', [rid]));
 
